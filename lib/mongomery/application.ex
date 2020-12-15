@@ -23,17 +23,7 @@ defmodule Mongomery.Application do
       ]
       |> Supervisor.start_link(strategy: :one_for_one, name: Mongomery.Supervisor)
 
-    Mongomery.Streams.resolve!()
+    Mongomery.Streams.start!()
     start
-  end
-
-  def test() do
-    :httpc.request(
-      :post,
-      {'http://localhost:8080/events', [], 'application/json',
-       Jason.encode!(%{"stream" => "events_created", "id" => "abc"})},
-      [],
-      []
-    )
   end
 end

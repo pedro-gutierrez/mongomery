@@ -1,6 +1,5 @@
 defmodule Mongomery.Streams.Supervisor do
   use DynamicSupervisor
-  alias Mongomery.Streams.Writer
   alias Mongomery.Streams.Stream
 
   def start_link(opts) do
@@ -14,8 +13,8 @@ defmodule Mongomery.Streams.Supervisor do
     )
   end
 
-  def resolve!(stream) do
-    with :undefined <- Writer.pid?(stream) do
+  def start!(stream) do
+    with :undefined <- Stream.pid(stream) do
       {:ok, _} = DynamicSupervisor.start_child(__MODULE__, {Stream, stream})
     end
 
