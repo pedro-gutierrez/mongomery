@@ -7,10 +7,7 @@ defmodule Mongomery.Streams.Stream do
   end
 
   def write(%{"stream" => stream} = event) do
-    t0 = :os.system_time(:microsecond)
-
     Mongomery.Streams.Supervisor.start!(stream)
-    t1 = :os.system_time(:microsecond)
 
     event =
       event
@@ -18,17 +15,14 @@ defmodule Mongomery.Streams.Stream do
       |> Map.put("_s", 1)
 
     {:ok, _} = Mongo.insert_one(:writer, stream, event)
-    t2 = :os.system_time(:microsecond)
 
-    poll(stream)
-    t3 = :os.system_time(:microsecond)
+    poll!(stream)
 
-    IO.inspect(start: t1 - t0, write: t2 - t1, poll: t3 - t2)
     :ok
   end
 
-  def poll(stream) do
-    GenServer.call({:global, {:stream, stream}}, :next)
+  def poll!(stream) do
+    :ok = GenServer.call({:global, {:stream, stream}}, :next)
   end
 
   def start_link(opts, stream) do
@@ -70,15 +64,10 @@ defmodule Mongomery.Streams.Stream do
   end
 
   defp next(%{stream: stream, callback_url: url} = state) do
-    with %{"_id" => id} = doc <-
-           Mongo.find_one(:poller, stream, %{"_s" => 1}, sort: %{"_id" => 1}) do
+    with %{"_id" => _} = doc <- next_event(stream) do
       case notify(stream, doc, url) do
         :ok ->
-          {:ok, %{modified_count: 1}} =
-            Mongo.update_one(:poller, stream, %{"_id" => id}, %{
-              "$set" => %{"_s" => 2}
-            })
-
+          done!(stream, doc)
           {:noreply, %{state | status: :active}, {:continue, :next}}
 
         :error ->
@@ -92,6 +81,17 @@ defmodule Mongomery.Streams.Stream do
   end
 
   @meta_attrs ["_id", "_s"]
+
+  defp next_event(stream) do
+    Mongo.find_one(:poller, stream, %{"_s" => 1}, sort: %{"_id" => 1})
+  end
+
+  defp done!(stream, %{"_id" => id}) do
+    {:ok, %{modified_count: 1}} =
+      Mongo.update_one(:poller, stream, %{"_id" => id}, %{
+        "$set" => %{"_s" => 2}
+      })
+  end
 
   defp notify(stream, event, url) do
     event =
