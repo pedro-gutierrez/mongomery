@@ -1,6 +1,7 @@
 defmodule Mongomery.Streams.Stream do
   use GenServer
   require Logger
+  alias Mongomery.Slack
 
   def pid(stream) do
     :global.whereis_name({:stream, stream})
@@ -63,9 +64,9 @@ defmodule Mongomery.Streams.Stream do
     Process.send_after(self(), :next, wait)
   end
 
-  defp next(%{stream: stream, callback_url: url} = state) do
+  defp next(%{stream: stream, callback_url: url, slack_url: slack_url} = state) do
     with %{"_id" => _} = doc <- next_event(stream) do
-      case notify(stream, doc, url) do
+      case notify(stream, doc, url, slack_url) do
         :ok ->
           done!(stream, doc)
           {:noreply, %{state | status: :active}, {:continue, :next}}
@@ -93,7 +94,7 @@ defmodule Mongomery.Streams.Stream do
       })
   end
 
-  defp notify(stream, event, url) do
+  defp notify(stream, event, url, slack_url) do
     event =
       event
       |> Map.drop(@meta_attrs)
@@ -108,11 +109,11 @@ defmodule Mongomery.Streams.Stream do
         :ok
 
       {:ok, %{status_code: code}} ->
-        Logger.warn("Unexpected status code #{code} from #{url}")
+        Slack.error(slack_url, stream, "Unexpected status code `#{code}` from `#{url}`")
         :error
 
       {:error, e} ->
-        Logger.warn("Unexpected error #{inspect(e)} from #{url}")
+        Slack.error(slack_url, stream, "Got error `#{inspect(e)}` from `#{url}`")
         :error
     end
   end

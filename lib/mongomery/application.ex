@@ -14,12 +14,13 @@ defmodule Mongomery.Application do
 
   def start(_, _) do
     callback_url = System.fetch_env!("CALLBACK_URL")
+    slack_url = System.fetch_env!("SLACK_URL")
 
     start =
       [
         {Http, [@port, @routes]},
         Mongo.Supervisor,
-        {Streams.Supervisor, [callback_url: callback_url]}
+        {Streams.Supervisor, [callback_url: callback_url, slack_url: slack_url]}
       ]
       |> Supervisor.start_link(strategy: :one_for_one, name: Mongomery.Supervisor)
 
