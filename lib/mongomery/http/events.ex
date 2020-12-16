@@ -1,5 +1,5 @@
 defmodule Mongomery.Http.Events do
-  def on(event) do
-    Mongomery.Streams.Stream.write(event)
+  def on(events) do
+    Mongomery.Streams.Stream.write(events)
   end
 end

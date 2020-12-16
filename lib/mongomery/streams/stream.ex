@@ -7,6 +7,16 @@ defmodule Mongomery.Streams.Stream do
     :global.whereis_name({:stream, stream})
   end
 
+  def write([_ | _] = events) do
+    {streams, events} =
+      Enum.map(events, fn %{"stream" => stream} = event ->
+        {stream,
+         event
+         |> Map.drop(["_id", "stream"])
+         |> Map.put("_s", 1)}
+      end)
+  end
+
   def write(%{"stream" => stream} = event) do
     Mongomery.Streams.Supervisor.start!(stream)
 
@@ -64,9 +74,12 @@ defmodule Mongomery.Streams.Stream do
     Process.send_after(self(), :next, wait)
   end
 
-  defp next(%{stream: stream, callback_url: url, slack_url: slack_url} = state) do
+  defp next(
+         %{stream: stream, callback_url: url, slack_url: slack_url, client_secret: client_secret} =
+           state
+       ) do
     with %{"_id" => _} = doc <- next_event(stream) do
-      case notify(stream, doc, url, slack_url) do
+      case notify(stream, doc, url, client_secret, slack_url) do
         :ok ->
           done!(stream, doc)
           {:noreply, %{state | status: :active}, {:continue, :next}}
@@ -94,27 +107,19 @@ defmodule Mongomery.Streams.Stream do
       })
   end
 
-  defp notify(stream, event, url, slack_url) do
+  defp notify(stream, event, url, client_secret, slack_url) do
     event =
       event
       |> Map.drop(@meta_attrs)
       |> Map.put(:stream, stream)
 
-    case HTTPoison.post(
-           url,
-           Jason.encode!(event),
-           [{"Content-Type", "application/json"}]
-         ) do
-      {:ok, %{status_code: 200}} ->
-        :ok
+    with {:error, e} <- Mongomery.Http.post(url, event, auth: client_secret) do
+      Slack.error(
+        slack_url,
+        "Got `#{inspect(e)}` when calling `#{url}` from stream `#{stream}`"
+      )
 
-      {:ok, %{status_code: code}} ->
-        Slack.error(slack_url, stream, "Unexpected status code `#{code}` from `#{url}`")
-        :error
-
-      {:error, e} ->
-        Slack.error(slack_url, stream, "Got error `#{inspect(e)}` from `#{url}`")
-        :error
+      :error
     end
   end
 

@@ -1,26 +1,21 @@
 defmodule Mongomery.Slack do
   require Logger
 
-  def error(url, stream, text) do
+  def error(url, text) do
     body = %{
       "attachments" => [
         %{
           "color" => "danger",
-          "text" => "Error in stream `#{stream}`: #{text}"
+          "text" => text
         }
       ]
     }
 
-    with {:ok, %{status_code: 200}} <-
-           HTTPoison.post(
-             url,
-             Jason.encode!(body),
-             [{"Content-Type", "application/json"}]
-           ) do
-      :ok
-    else
-      other ->
-        Logger.warn("Error notying error in stream #{stream}: #{inspect(other)}")
+    with {:error, e} <-
+           Mongomery.Http.post(url, body) do
+      Logger.warn("Got #{inspect(e)} when calling slack. Original error: #{text}")
     end
+
+    :ok
   end
 end

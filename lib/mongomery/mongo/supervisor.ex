@@ -25,7 +25,7 @@ defmodule Mongomery.Mongo.Supervisor do
                pool_timeout: 8000,
                name: name,
                url: url,
-               pool_size: 1
+               pool_size: 3
              ]
            ]},
         type: :worker,

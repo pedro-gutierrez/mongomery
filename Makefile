@@ -1,2 +1,6 @@
 start:
-	MONGO_URL=mongodb://localhost/mongomery CALLBACK_URL=http://localhost:8080/test iex -S mix
+	@MONGO_URL=mongodb://localhost/mongomery \
+		CALLBACK_URL=http://localhost:8080/test \
+		SERVER_SECRET=85738F8F9A7F1B04B5329C590EBCB9E425925C6D0984089C43A022DE4F19C281 \
+		CLIENT_SECRET=whatever \
+		iex -S mix

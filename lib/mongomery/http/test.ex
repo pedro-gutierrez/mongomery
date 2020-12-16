@@ -5,12 +5,13 @@ defmodule Mongomery.Http.Test do
   end
 
   def test() do
-    :httpc.request(
-      :post,
-      {'http://localhost:8080/events', [], 'application/json',
-       Jason.encode!(%{"stream" => "events_created", "id" => "abc"})},
-      [],
-      []
+    Mongomery.Http.post(
+      "http://localhost:8080/events",
+      [
+        %{"stream" => "events_created", "id" => "abc"},
+        %{"stream" => "events_resolved", "id" => "def"}
+      ],
+      auth: "whatever"
     )
   end
 end
