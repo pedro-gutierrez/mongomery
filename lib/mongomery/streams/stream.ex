@@ -8,28 +8,39 @@ defmodule Mongomery.Streams.Stream do
   end
 
   def write([_ | _] = events) do
-    {streams, events} =
-      Enum.map(events, fn %{"stream" => stream} = event ->
-        {stream,
-         event
-         |> Map.drop(["_id", "stream"])
-         |> Map.put("_s", 1)}
+    streams =
+      events
+      |> Enum.map(fn %{"stream" => stream} ->
+        stream
       end)
+      |> Enum.uniq()
+
+    Enum.each(streams, &Mongomery.Streams.Supervisor.start!(&1))
+
+    {:ok, _} =
+      Mongo.Session.with_transaction(
+        :writer,
+        fn opts ->
+          Enum.each(events, fn %{"stream" => stream} = event ->
+            event =
+              event
+              |> Map.drop(["_id", "stream"])
+              |> Map.put("_s", 1)
+
+            {:ok, %{:inserted_id => _}} = Mongo.insert_one(:writer, stream, event, opts)
+          end)
+
+          {:ok, length(events)}
+        end,
+        transaction_retry_timeout_s: 10
+      )
+
+    Enum.each(streams, &poll!(&1))
+    :ok
   end
 
-  def write(%{"stream" => stream} = event) do
-    Mongomery.Streams.Supervisor.start!(stream)
-
-    event =
-      event
-      |> Map.drop(["_id", "stream"])
-      |> Map.put("_s", 1)
-
-    {:ok, _} = Mongo.insert_one(:writer, stream, event)
-
-    poll!(stream)
-
-    :ok
+  def write(event) when is_map(event) do
+    write([event])
   end
 
   def poll!(stream) do
