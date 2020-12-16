@@ -8,8 +8,7 @@ defmodule Mongomery.Application do
 
   @routes %{
     "/" => Mongomery.Http.Health,
-    "/events" => Mongomery.Http.Events,
-    "/test" => Mongomery.Http.Test
+    "/events" => Mongomery.Http.Events
   }
 
   def start(_, _) do

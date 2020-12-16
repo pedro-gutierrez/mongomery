@@ -2,7 +2,7 @@ defmodule Mongomery.Http do
   def init(req, [mod, secret]) do
     start = :os.system_time(:microsecond)
 
-    with {:continue, req} <- auth(req, secret, start) do
+    with {:continue, req} <- auth(mod, req, secret, start) do
       {req, body} =
         case :cowboy_req.has_body(req) do
           true ->
@@ -94,19 +94,29 @@ defmodule Mongomery.Http do
     end
   end
 
+  defp auth(mod, req, secret, start) do
+    case mod.auth?() do
+      true ->
+        auth(req, secret, start)
+
+      false ->
+        {:continue, req}
+    end
+  end
+
   defp auth(%{headers: %{"authorization" => "Bearer " <> token}} = req, secret, start) do
-    auth(req, :crypto.hash(:sha256, token) |> Base.encode16(), secret, start)
+    check_token(req, :crypto.hash(:sha256, token) |> Base.encode16(), secret, start)
   end
 
   defp auth(req, _, start) do
     reply(req, start, 401)
   end
 
-  defp auth(req, secret, secret, _) do
+  defp check_token(req, secret, secret, _) do
     {:continue, req}
   end
 
-  defp auth(req, _, _, start) do
+  defp check_token(req, _, _, start) do
     reply(req, start, 401)
   end
 
