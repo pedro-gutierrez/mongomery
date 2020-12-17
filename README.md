@@ -1,9 +1,11 @@
 # Mongomery
 
+A simple, http driven queue service written in Elixir and backed by MongoDB.
+
 ## Create a stream
 
 ```
-$ export $TOKEN=...
+$ export TOKEN=...
 $ curl -X POST \
   -H "authorization: Bearer $TOKEN" \
   -H "content-type: application/json" \
@@ -15,7 +17,7 @@ $ curl -X POST \
 
 
 ```
-$ export $TOKEN=...
+$ export TOKEN=...
 $ curl -X POST \
   -H "authorization: Bearer $TOKEN" \
   -H "content-type: application/json" \
