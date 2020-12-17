@@ -15,28 +15,34 @@ defmodule Mongomery.Streams.Stream do
       end)
       |> Enum.uniq()
 
-    Enum.each(streams, &Mongomery.Streams.Supervisor.start!(&1))
+    case Mongomery.Streams.all?(streams) do
+      false ->
+        {:error, :invalid}
 
-    {:ok, _} =
-      Mongo.Session.with_transaction(
-        :writer,
-        fn opts ->
-          Enum.each(events, fn %{"stream" => stream} = event ->
-            event =
-              event
-              |> Map.drop(["_id", "stream"])
-              |> Map.put("_s", 1)
+      true ->
+        Enum.each(streams, &Mongomery.Streams.Supervisor.start!(&1))
 
-            {:ok, %{:inserted_id => _}} = Mongo.insert_one(:writer, stream, event, opts)
-          end)
+        {:ok, _} =
+          Mongo.Session.with_transaction(
+            :writer,
+            fn opts ->
+              Enum.each(events, fn %{"stream" => stream} = event ->
+                event =
+                  event
+                  |> Map.drop(["_id", "stream"])
+                  |> Map.put("_s", 1)
 
-          {:ok, length(events)}
-        end,
-        transaction_retry_timeout_s: 10
-      )
+                {:ok, %{:inserted_id => _}} = Mongo.insert_one(:writer, stream, event, opts)
+              end)
 
-    Enum.each(streams, &poll!(&1))
-    :ok
+              {:ok, length(events)}
+            end,
+            transaction_retry_timeout_s: 10
+          )
+
+        Enum.each(streams, &poll!(&1))
+        :ok
+    end
   end
 
   def write(event) when is_map(event) do
@@ -57,9 +63,12 @@ defmodule Mongomery.Streams.Stream do
   end
 
   def init(%{stream: stream} = state) do
-    state = Map.put(state, :status, :active)
-    ensure_index!(stream)
-    update!(stream, state.status)
+    %{"callback" => url} = Mongomery.Streams.info!(stream)
+
+    state =
+      state
+      |> Map.merge(%{status: :active, callback_url: url})
+
     Logger.debug("Started stream #{stream}")
     {:ok, state, {:continue, :next}}
   end
@@ -132,34 +141,5 @@ defmodule Mongomery.Streams.Stream do
 
       :error
     end
-  end
-
-  defp ensure_index!(stream) do
-    {:ok, _} =
-      Mongo.command(
-        :poller,
-        [
-          createIndexes: stream,
-          indexes: [
-            [name: "_s_", unique: false, key: [_s: 1]]
-          ]
-        ],
-        []
-      )
-
-    :ok
-  end
-
-  defp update!(stream, status) do
-    {:ok, _} =
-      Mongo.update_one(
-        :poller,
-        "streams",
-        %{"name" => stream, "status" => status},
-        %{"$currentDate" => %{"since" => true}},
-        upsert: true
-      )
-
-    :ok
   end
 end

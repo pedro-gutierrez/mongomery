@@ -1,21 +1,24 @@
 # Mongomery
 
-**TODO: Add description**
+## Create a stream
 
-## Installation
-
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `mongomery` to your list of dependencies in `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:mongomery, "~> 0.1.0"}
-  ]
-end
+```
+$ export $TOKEN=...
+$ curl -X POST \
+  -H "authorization: Bearer $TOKEN" \
+  -H "content-type: application/json" \
+  -d '[{ "name" : "user_created", "callback: "http://localhost:8080/callback" }]' \
+  https://mongomery-pedro-gutierrez.okteto.net"
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/mongomery](https://hexdocs.pm/mongomery).
+## Post an event
 
+
+```
+$ export $TOKEN=...
+$ curl -X POST \
+  -H "authorization: Bearer $TOKEN" \
+  -H "content-type: application/json" \
+  -d '{ "stream" : "user_created", "username": "foo" }]' \
+  https://mongomery-pedro-gutierrez.okteto.net"
+```

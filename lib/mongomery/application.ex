@@ -8,6 +8,7 @@ defmodule Mongomery.Application do
 
   @routes %{
     "/" => Mongomery.Http.Health,
+    "/streams" => Mongomery.Http.Streams,
     "/events" => Mongomery.Http.Events
   }
 
