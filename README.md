@@ -1,6 +1,6 @@
 # Mongomery
 
-A simple, http driven queue service written in Elixir and backed by MongoDB.
+A simple, http driven store written in Elixir and backed by MongoDB.
 
 ## Create a stream
 
