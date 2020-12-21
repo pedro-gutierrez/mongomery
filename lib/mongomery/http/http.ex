@@ -13,22 +13,25 @@ defmodule Mongomery.Http do
             {req, nil}
         end
 
-      {status, body} =
+      {status, body, headers} =
         case mod.on(body) do
           :ok ->
-            {200, %{}}
+            {200, %{}, %{}}
 
           {:ok, data} ->
-            {200, data}
+            {200, data, %{}}
 
           {:error, :invalid} ->
-            {400, %{}}
+            {400, %{}, %{}}
 
           {:error, other} ->
-            {500, other}
+            {500, other, %{}}
+
+          other ->
+            other
         end
 
-      reply(req, start, status, body)
+      reply(req, start, status, body, headers)
     end
   end
 
@@ -66,6 +69,8 @@ defmodule Mongomery.Http do
     }
   end
 
+  @default_retry 1000
+
   def post(url, body, opts \\ []) do
     headers = [{"Content-Type", "application/json"}]
 
@@ -86,11 +91,30 @@ defmodule Mongomery.Http do
       {:ok, %{status_code: code}} when code >= 200 and code < 300 ->
         :ok
 
-      {:ok, %{status_code: code}} ->
-        {:error, code}
+      {:ok, %{status_code: code, headers: headers}} ->
+        headers = Enum.into(headers, %{})
+        retry = int_header(headers, "retry-after", @default_retry)
+
+        {:error, code, retry: retry}
 
       {:error, %{reason: e}} ->
-        {:error, e}
+        {:error, e, []}
+    end
+  end
+
+  defp int_header(headers, key, default) do
+    case headers[key] do
+      nil ->
+        default
+
+      header ->
+        case Integer.parse(header) do
+          {header, _} ->
+            header
+
+          :error ->
+            default
+        end
     end
   end
 
@@ -109,7 +133,7 @@ defmodule Mongomery.Http do
   end
 
   defp auth(req, _, start) do
-    reply(req, start, 401)
+    reply(req, start, 401, %{}, %{})
   end
 
   defp check_token(req, secret, secret, _) do
@@ -117,17 +141,23 @@ defmodule Mongomery.Http do
   end
 
   defp check_token(req, _, _, start) do
-    reply(req, start, 401)
+    reply(req, start, 401, %{}, %{})
   end
 
-  defp reply(req, start, status, body \\ %{}) do
+  defp reply(req, start, status, body, headers) do
+    headers =
+      Map.merge(
+        headers,
+        %{
+          "content-type" => "application/json",
+          "duration" => "#{:os.system_time(:microsecond) - start}"
+        }
+      )
+
     {:ok,
      :cowboy_req.reply(
        status,
-       %{
-         "content-type" => "application/json",
-         "duration" => "#{:os.system_time(:microsecond) - start}"
-       },
+       headers,
        Jason.encode!(body),
        req
      ), []}

@@ -4,15 +4,15 @@ defmodule Mongomery.Application do
   alias Mongomery.Streams
   alias Mongomery.Mongo
 
-  @port 8080
-
   @routes %{
     "/" => Mongomery.Http.Health,
     "/streams" => Mongomery.Http.Streams,
-    "/events" => Mongomery.Http.Events
+    "/events" => Mongomery.Http.Events,
+    "/test" => Mongomery.Http.Test
   }
 
   def start(_, _) do
+    server_port = System.get_env("SERVER_PORT", "8080") |> String.to_integer()
     callback_url = System.fetch_env!("CALLBACK_URL")
     slack_url = System.fetch_env!("SLACK_URL")
     server_secret = System.fetch_env!("SERVER_SECRET")
@@ -20,7 +20,7 @@ defmodule Mongomery.Application do
 
     start =
       [
-        {Http, [@port, @routes, server_secret]},
+        {Http, [server_port, @routes, server_secret]},
         Mongo.Supervisor,
         {Streams.Supervisor,
          [callback_url: callback_url, slack_url: slack_url, client_secret: client_secret]}
@@ -29,5 +29,9 @@ defmodule Mongomery.Application do
 
     Mongomery.Streams.start!()
     start
+  end
+
+  def stop(_) do
+    System.stop(1)
   end
 end

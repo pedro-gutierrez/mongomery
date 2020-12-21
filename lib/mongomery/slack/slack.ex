@@ -11,7 +11,7 @@ defmodule Mongomery.Slack do
       ]
     }
 
-    with {:error, e} <-
+    with {:error, e, _} <-
            Mongomery.Http.post(url, body) do
       Logger.warn("Got #{inspect(e)} when calling slack. Original error: #{text}")
     end

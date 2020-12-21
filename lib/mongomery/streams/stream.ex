@@ -20,8 +20,6 @@ defmodule Mongomery.Streams.Stream do
         {:error, :invalid}
 
       true ->
-        Enum.each(streams, &Mongomery.Streams.Supervisor.start!(&1))
-
         {:ok, _} =
           Mongo.Session.with_transaction(
             :writer,
@@ -63,11 +61,21 @@ defmodule Mongomery.Streams.Stream do
   end
 
   def init(%{stream: stream} = state) do
-    %{"callback" => url} = Mongomery.Streams.info!(stream)
+    %{"callback" => url, "retries" => retries, "sleep" => sleep} = Mongomery.Streams.info!(stream)
+
+    status = :active
+    update_stream!(stream, status)
 
     state =
       state
-      |> Map.merge(%{status: :active, callback_url: url})
+      |> Map.merge(%{
+        status: status,
+        callback_url: url,
+        max_retries: retries,
+        retries_left: retries,
+        retry_sleep: sleep,
+        last_error: nil
+      })
 
     Logger.debug("Started stream #{stream}")
     {:ok, state, {:continue, :next}}
@@ -81,32 +89,74 @@ defmodule Mongomery.Streams.Stream do
     next(state)
   end
 
+  def handle_info(_, state) do
+    {:noreply, state}
+  end
+
   def handle_call(:next, _, %{status: :idle} = state) do
     schedule(0)
     {:reply, :ok, state}
   end
 
-  def handle_call(:next, _, state) do
+  def handle_call(_, _, state) do
     {:reply, :ok, state}
   end
 
-  defp schedule(wait \\ 1000) do
+  defp schedule(wait) do
     Process.send_after(self(), :next, wait)
   end
 
   defp next(
-         %{stream: stream, callback_url: url, slack_url: slack_url, client_secret: client_secret} =
-           state
+         %{
+           stream: stream,
+           callback_url: url,
+           slack_url: slack_url,
+           max_retries: max_retries,
+           retries_left: 0,
+           last_error: e
+         } = state
        ) do
+    Slack.error(
+      slack_url,
+      "Got `#{inspect(e)}` when calling `#{url}` from stream `#{stream}`"
+    )
+
+    status = :error
+    update_stream!(stream, status)
+    Logger.error("Stream #{stream} stopped after #{max_retries} failed deliveries")
+
+    {:noreply, %{state | status: status}}
+  end
+
+  defp next(
+         %{
+           stream: stream,
+           callback_url: url,
+           client_secret: client_secret,
+           max_retries: max_retries,
+           retries_left: retries_left,
+           retry_sleep: retry_sleep
+         } = state
+       )
+       when retries_left > 0 do
     with %{"_id" => _} = doc <- next_event(stream) do
-      case notify(stream, doc, url, client_secret, slack_url) do
+      case notify(stream, doc, url, client_secret) do
         :ok ->
           done!(stream, doc)
-          {:noreply, %{state | status: :active}, {:continue, :next}}
 
-        :error ->
-          schedule()
-          {:noreply, %{state | status: :retrying}}
+          {:noreply, %{state | last_error: nil, retries_left: max_retries, status: :active},
+           {:continue, :next}}
+
+        {:error, e, opts} ->
+          retries_left = retries_left - 1
+          retry_after = opts[:retry] || retry_sleep
+          schedule(retry_after)
+
+          Logger.warn(
+            "Retrying #{stream} in #{retry_after}ms after #{inspect(e)} when calling #{url}"
+          )
+
+          {:noreply, %{state | last_error: e, retries_left: retries_left, status: :retrying}}
       end
     else
       _ ->
@@ -127,19 +177,20 @@ defmodule Mongomery.Streams.Stream do
       })
   end
 
-  defp notify(stream, event, url, client_secret, slack_url) do
+  defp notify(stream, event, url, client_secret) do
     event =
       event
       |> Map.drop(@meta_attrs)
       |> Map.put(:stream, stream)
 
-    with {:error, e} <- Mongomery.Http.post(url, event, auth: client_secret) do
-      Slack.error(
-        slack_url,
-        "Got `#{inspect(e)}` when calling `#{url}` from stream `#{stream}`"
-      )
+    Mongomery.Http.post(url, event, auth: client_secret)
+  end
 
-      :error
-    end
+  defp update_stream!(stream, status) do
+    {:ok, %{modified_count: 1}} =
+      Mongo.update_one(:info, "streams", %{"name" => stream}, %{
+        "$set" => %{"status" => status},
+        "$currentDate" => %{"since" => true}
+      })
   end
 end

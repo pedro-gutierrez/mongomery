@@ -15,9 +15,18 @@ defmodule Mongomery.Streams.Supervisor do
 
   def start!(stream) do
     with :undefined <- Stream.pid(stream) do
-      {:ok, _} = DynamicSupervisor.start_child(__MODULE__, {Stream, stream})
+      case DynamicSupervisor.start_child(__MODULE__, {Stream, stream}) do
+        {:ok, _} -> :ok
+        {:error, {:already_started, _}} -> :ok
+      end
     end
 
     :ok
+  end
+
+  def stop!(stream) do
+    with pid when is_pid(pid) <- Stream.pid(stream) do
+      Process.exit(pid, :shutdown)
+    end
   end
 end

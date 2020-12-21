@@ -46,7 +46,14 @@ defmodule Mongomery.Streams do
                 :info,
                 "streams",
                 %{"name" => stream["name"]},
-                %{"$set" => %{"callback" => stream["callback"]}},
+                %{
+                  "$set" => %{
+                    "retries" => stream["retries"] || 10,
+                    "sleep" => stream["sleep"] || 1000,
+                    "callback" => stream["callback"],
+                    "status" => "idle"
+                  }
+                },
                 upsert: true
               )
           end)
@@ -57,6 +64,7 @@ defmodule Mongomery.Streams do
       )
 
     Enum.each(streams, fn %{"name" => name} ->
+      Mongomery.Streams.Supervisor.stop!(name)
       Mongomery.Streams.Supervisor.start!(name)
     end)
 
