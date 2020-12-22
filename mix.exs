@@ -28,7 +28,7 @@ defmodule Mongomery.MixProject do
 
   defp deps do
     [
-      {:mongodb_driver, "~> 0.7"},
+      {:mongodb_driver, "~> 0.7.0"},
       {:libcluster, "~> 3.2"},
       {:cowboy, "~> 2.8.0"},
       {:jason, "~> 1.2"},

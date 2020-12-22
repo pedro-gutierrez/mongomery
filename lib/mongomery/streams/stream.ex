@@ -7,6 +7,21 @@ defmodule Mongomery.Streams.Stream do
     :global.whereis_name({:stream, stream})
   end
 
+  def location(stream) do
+    case Mongomery.Streams.Stream.pid(stream) do
+      :undefined ->
+        :none
+
+      pid ->
+        node(pid)
+    end
+  end
+
+  def backlog!(stream) do
+    {:ok, count} = Mongo.count_documents(:info, stream, %{"_s" => 1})
+    count
+  end
+
   def write([_ | _] = events) do
     streams =
       events
@@ -121,11 +136,10 @@ defmodule Mongomery.Streams.Stream do
       "Got `#{inspect(e)}` when calling `#{url}` from stream `#{stream}`"
     )
 
-    status = :error
-    update_stream!(stream, status)
+    update_stream!(stream, :error)
     Logger.error("Stream #{stream} stopped after #{max_retries} failed deliveries")
 
-    {:noreply, %{state | status: status}}
+    {:noreply, %{state | status: :error}}
   end
 
   defp next(
@@ -135,7 +149,8 @@ defmodule Mongomery.Streams.Stream do
            client_secret: client_secret,
            max_retries: max_retries,
            retries_left: retries_left,
-           retry_sleep: retry_sleep
+           retry_sleep: retry_sleep,
+           status: status
          } = state
        )
        when retries_left > 0 do
@@ -143,6 +158,10 @@ defmodule Mongomery.Streams.Stream do
       case notify(stream, doc, url, client_secret) do
         :ok ->
           done!(stream, doc)
+
+          if status != :active do
+            update_stream!(stream, :active)
+          end
 
           {:noreply, %{state | last_error: nil, retries_left: max_retries, status: :active},
            {:continue, :next}}
@@ -152,6 +171,10 @@ defmodule Mongomery.Streams.Stream do
           retry_after = opts[:retry] || retry_sleep
           schedule(retry_after)
 
+          if status != :retrying do
+            update_stream!(stream, :retrying)
+          end
+
           Logger.warn(
             "Retrying #{stream} in #{retry_after}ms after #{inspect(e)} when calling #{url}"
           )
@@ -160,6 +183,7 @@ defmodule Mongomery.Streams.Stream do
       end
     else
       _ ->
+        update_stream!(stream, :idle)
         {:noreply, %{state | status: :idle}}
     end
   end

@@ -13,8 +13,10 @@ defmodule Mongomery.Http do
             {req, nil}
         end
 
+      method = method(req)
+
       {status, body, headers} =
-        case mod.on(body) do
+        case apply(mod, method, [body]) do
           :ok ->
             {200, %{}, %{}}
 
@@ -101,6 +103,15 @@ defmodule Mongomery.Http do
         {:error, e, []}
     end
   end
+
+  defp method(%{method: m}) do
+    method(m)
+  end
+
+  defp method("GET"), do: :get
+  defp method("POST"), do: :post
+  defp method("DELETE"), do: :delete
+  defp method("PUT"), do: :put
 
   defp int_header(headers, key, default) do
     case headers[key] do
