@@ -104,6 +104,10 @@ defmodule Mongomery.Streams.Stream do
     next(state)
   end
 
+  def handle_info({:retry, doc}, state) do
+    retry(doc, state)
+  end
+
   def handle_info(_, state) do
     {:noreply, state}
   end
@@ -117,6 +121,8 @@ defmodule Mongomery.Streams.Stream do
     {:reply, :ok, state}
   end
 
+  @meta_attrs ["_id", "_s", "_e"]
+
   defp schedule(wait) do
     Process.send_after(self(), :next, wait)
   end
@@ -124,80 +130,93 @@ defmodule Mongomery.Streams.Stream do
   defp next(
          %{
            stream: stream,
-           callback_url: url,
-           slack_url: slack_url,
-           max_retries: max_retries,
-           retries_left: 0,
-           last_error: e
+           max_retries: max_retries
          } = state
        ) do
-    Slack.error(
-      slack_url,
-      "Got `#{inspect(e)}` when calling `#{url}` from stream `#{stream}`"
-    )
+    case next_event(stream) do
+      %{"_id" => _} = doc ->
+        notify_with_retry(doc, %{state | retries_left: max_retries})
 
-    update_stream!(stream, :error)
-    Logger.error("Stream #{stream} stopped after #{max_retries} failed deliveries")
-
-    {:noreply, %{state | status: :error}}
-  end
-
-  defp next(
-         %{
-           stream: stream,
-           callback_url: url,
-           client_secret: client_secret,
-           max_retries: max_retries,
-           retries_left: retries_left,
-           retry_sleep: retry_sleep,
-           status: status
-         } = state
-       )
-       when retries_left > 0 do
-    with %{"_id" => _} = doc <- next_event(stream) do
-      case notify(stream, doc, url, client_secret) do
-        :ok ->
-          done!(stream, doc)
-
-          if status != :active do
-            update_stream!(stream, :active)
-          end
-
-          {:noreply, %{state | last_error: nil, retries_left: max_retries, status: :active},
-           {:continue, :next}}
-
-        {:error, e, opts} ->
-          retries_left = retries_left - 1
-          retry_after = opts[:retry] || retry_sleep
-          schedule(retry_after)
-
-          if status != :retrying do
-            update_stream!(stream, :retrying)
-          end
-
-          Logger.warn(
-            "Retrying #{stream} in #{retry_after}ms after #{inspect(e)} when calling #{url}"
-          )
-
-          {:noreply, %{state | last_error: e, retries_left: retries_left, status: :retrying}}
-      end
-    else
       _ ->
         update_stream!(stream, :idle)
         {:noreply, %{state | status: :idle}}
     end
   end
 
-  @meta_attrs ["_id", "_s"]
+  def retry(
+        doc,
+        %{
+          stream: stream,
+          retries_left: 0,
+          slack_url: slack_url,
+          callback_url: url,
+          last_error: e
+        } = state
+      ) do
+    set_doc_error!(stream, doc, e)
+
+    Slack.error(
+      slack_url,
+      "Got `#{inspect(e)}` when calling `#{url}` from stream `#{stream}`"
+    )
+
+    {:noreply, %{state | status: :active, last_error: nil}, {:continue, :next}}
+  end
+
+  def retry(doc, state) do
+    notify_with_retry(doc, state)
+  end
+
+  defp notify_with_retry(
+         doc,
+         %{
+           stream: stream,
+           callback_url: url,
+           client_secret: client_secret,
+           retry_sleep: retry_sleep,
+           retries_left: retries_left
+         } = state
+       ) do
+    case notify(stream, doc, url, client_secret) do
+      :ok ->
+        set_doc_status!(stream, doc, 2)
+        {:noreply, %{state | status: :active}, {:continue, :next}}
+
+      {:error, e, opts} ->
+        retry_after = opts[:retry] || retry_sleep
+        error = opts[:response] || e
+
+        Process.send_after(self(), {:retry, doc}, retry_after)
+
+        Logger.warn(
+          "Retrying delivery to #{url} in #{retry_after}ms after #{inspect(e)} in stream #{stream}"
+        )
+
+        {:noreply,
+         %{
+           state
+           | status: :retrying,
+             last_error: error,
+             retries_left: retries_left - 1
+         }}
+    end
+  end
 
   defp next_event(stream) do
     Mongo.find_one(:poller, stream, %{"_s" => 1}, sort: %{"_id" => 1})
   end
 
-  defp done!(stream, %{"_id" => id}) do
+  defp set_doc_status!(stream, %{"_id" => id}, status) do
     {:ok, %{modified_count: 1}} =
       Mongo.update_one(:poller, stream, %{"_id" => id}, %{
-        "$set" => %{"_s" => 2}
+        "$set" => %{"_s" => status}
+      })
+  end
+
+  defp set_doc_error!(stream, %{"_id" => id}, error) do
+    {:ok, %{modified_count: 1}} =
+      Mongo.update_one(:poller, stream, %{"_id" => id}, %{
+        "$set" => %{"_s" => 3, "_e" => error}
       })
   end
 

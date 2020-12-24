@@ -93,11 +93,17 @@ defmodule Mongomery.Http do
       {:ok, %{status_code: code}} when code >= 200 and code < 300 ->
         :ok
 
-      {:ok, %{status_code: code, headers: headers}} ->
+      {:ok, %{status_code: code, headers: headers, body: body}} ->
         headers = Enum.into(headers, %{})
         retry = int_header(headers, "retry-after", @default_retry)
 
-        {:error, code, retry: retry}
+        body =
+          case Jason.decode(body) do
+            {:ok, doc} -> doc
+            {:error, _} -> body
+          end
+
+        {:error, code, retry: retry, response: %{status: code, headers: headers, body: body}}
 
       {:error, %{reason: e}} ->
         {:error, e, []}
