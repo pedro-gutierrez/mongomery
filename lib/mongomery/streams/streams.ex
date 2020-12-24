@@ -56,6 +56,11 @@ defmodule Mongomery.Streams do
                 },
                 upsert: true
               )
+
+            {:ok, _} =
+              Mongo.update_many(:info, stream["name"], %{"_s" => 3}, %{
+                "$set" => %{"_s" => 1, "_e" => nil}
+              })
           end)
 
           {:ok, length(streams)}

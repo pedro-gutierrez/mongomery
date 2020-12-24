@@ -19,7 +19,9 @@ defmodule Mongomery.Http.Streams do
       |> Enum.map(fn %{"name" => name} = stream ->
         Map.merge(stream, %{
           "node" => Stream.location(name),
-          "backlog" => Stream.backlog!(name)
+          "pending" => Stream.pending!(name),
+          "errors" => Stream.errors!(name),
+          "done" => Stream.done!(name)
         })
       end)
 

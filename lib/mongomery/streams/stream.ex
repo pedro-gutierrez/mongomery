@@ -17,8 +17,12 @@ defmodule Mongomery.Streams.Stream do
     end
   end
 
-  def backlog!(stream) do
-    {:ok, count} = Mongo.count_documents(:info, stream, %{"_s" => 1})
+  def pending!(stream), do: count!(stream, 1)
+  def errors!(stream), do: count!(stream, 3)
+  def done!(stream), do: count!(stream, 2)
+
+  defp count!(stream, status) do
+    {:ok, count} = Mongo.count_documents(:info, stream, %{"_s" => status})
     count
   end
 
