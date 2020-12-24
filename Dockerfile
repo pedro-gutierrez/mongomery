@@ -1,4 +1,4 @@
-FROM elixir:1.10.3-alpine AS builder
+FROM pedrogutierrez/elixir:1.11 AS builder
 RUN apk add build-base curl
 
 RUN mkdir -p /app
@@ -14,7 +14,7 @@ RUN mix local.hex --force && \
     mix deps.get && \
     mix release
 
-FROM elixir:1.10.3-alpine
+FROM pedrogutierrez/elixir:1.11
 
 RUN mkdir -p /app
 WORKDIR /app
