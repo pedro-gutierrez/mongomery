@@ -159,9 +159,15 @@ defmodule Mongomery.Streams.Stream do
       ) do
     set_doc_error!(stream, doc, e)
 
+    e =
+      cond do
+        is_map(e) -> Jason.encode!(e)
+        true -> inspect(e)
+      end
+
     Slack.error(
       slack_url,
-      "Got `#{inspect(e)}` when calling `#{url}` from stream `#{stream}`"
+      "Got `#{e}` when calling `#{url}` from stream `#{stream}`"
     )
 
     {:noreply, %{state | status: :active, last_error: nil}, {:continue, :next}}
