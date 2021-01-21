@@ -15,5 +15,5 @@ jobs:
           docker_tag: latest
           docker_password: ${{ secrets.DOCKER_PASSWORD }}
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
-          secrets_name: "secrets"
+          secrets_name: "mongomery"
           secrets: ${{ secrets.SECRETS }}

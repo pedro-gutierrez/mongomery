@@ -50,7 +50,7 @@ spec:
               protocol: TCP
           envFrom:
             - secretRef:
-                name: secrets
+                name: mongomery
           env:
             - name: DEPLOYMENT_VERSION 
               value: "{{VERSION}}"
